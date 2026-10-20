@@ -7,52 +7,61 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Baixar código
         uses: actions/checkout@v4
 
-      - name: Configurar Java
+      - name: Configurar Java 8 (Ideal para Android 4.1.1)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '8'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Compilar e Assinar APK para Android 4.1.1 (API 16)
         run: |
+          yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-28" "build-tools;28.0.3"
+          
           BUILD_TOOLS="$ANDROID_HOME/build-tools/28.0.3"
           PLATFORM="$ANDROID_HOME/platforms/android-28/android.jar"
           
           mkdir -p build/gen build/obj build/apk
           
-          # Empacotar recursos e gerar R.java
+          # Empacotar recursos
           $BUILD_TOOLS/aapt package -f -m \
             -J build/gen \
             -M app/src/main/AndroidManifest.xml \
             -A app/src/main/assets \
             -I $PLATFORM
             
-          # Compilar Java em compatibilidade Java 7 (exigido pelo Android 4.1.1)
-          javac -source 1.7 -target 1.7 \
+          # Compilar Java em modo compatível com Android 4.1.1
+          javac -encoding UTF-8 -source 1.7 -target 1.7 \
             -bootclasspath $PLATFORM \
             -d build/obj \
             app/src/main/java/br/gov/sp/carapicuiba/semeti/MainActivity.java
             
-          # Converter para Dalvik (.dex) compatível com Android 4.1
+          # Converter para Dalvik (.dex) compatível com Android 4.1.1
           $BUILD_TOOLS/dx --dex --output=build/apk/classes.dex build/obj
           
-          # Criar APK bruto
+          # Criar APK e adicionar o classes.dex na raiz do pacote
           $BUILD_TOOLS/aapt package -f \
             -M app/src/main/AndroidManifest.xml \
             -A app/src/main/assets \
             -I $PLATFORM \
-            -F build/seme-unaligned.apk build/apk
+            -F build/seme-unaligned.apk
             
+          cd build/apk
+          $BUILD_TOOLS/aapt add ../seme-unaligned.apk classes.dex
+          cd ../..
+          
           # Alinhar APK
           $BUILD_TOOLS/zipalign -f 4 build/seme-unaligned.apk build/seme-aligned.apk
           
-          # Criar chave e assinar com assinatura v1 (obrigatória para Android 4.1.1)
+          # Criar chave e assinar com assinatura v1 (obrigatória no Android 4.1.1)
           keytool -genkeypair -v -keystore debug.keystore -storepass android \
             -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=SEME-TI, OU=TI, O=Carapicuiba, L=SP, S=SP, C=BR"

@@ -12,20 +12,30 @@ jobs:
       - name: Baixar código
         uses: actions/checkout@v4
 
-      - name: Configurar Java 8 (Ideal para Android 4.1.1)
+      - name: Configurar Java 11
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '8'
+          java-version: '11'
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Baixar e Instalar Android SDK Manualmente
+        run: |
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          curl -s https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -o tools.zip
+          unzip -q tools.zip
+          mv cmdline-tools latest
+          mkdir -p latest/bin
+
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-28" "build-tools;28.0.3"
 
       - name: Compilar e Assinar APK para Android 4.1.1 (API 16)
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-28" "build-tools;28.0.3"
-          
+          export ANDROID_HOME=$HOME/android-sdk
           BUILD_TOOLS="$ANDROID_HOME/build-tools/28.0.3"
           PLATFORM="$ANDROID_HOME/platforms/android-28/android.jar"
           
@@ -38,7 +48,7 @@ jobs:
             -A app/src/main/assets \
             -I $PLATFORM
             
-          # Compilar Java em modo compatível com Android 4.1.1
+          # Compilar Java em compatibilidade com Android 4.1.1
           javac -encoding UTF-8 -source 1.7 -target 1.7 \
             -bootclasspath $PLATFORM \
             -d build/obj \
@@ -47,7 +57,7 @@ jobs:
           # Converter para Dalvik (.dex) compatível com Android 4.1.1
           $BUILD_TOOLS/dx --dex --output=build/apk/classes.dex build/obj
           
-          # Criar APK e adicionar o classes.dex na raiz do pacote
+          # Criar APK bruto
           $BUILD_TOOLS/aapt package -f \
             -M app/src/main/AndroidManifest.xml \
             -A app/src/main/assets \
@@ -61,7 +71,7 @@ jobs:
           # Alinhar APK
           $BUILD_TOOLS/zipalign -f 4 build/seme-unaligned.apk build/seme-aligned.apk
           
-          # Criar chave e assinar com assinatura v1 (obrigatória no Android 4.1.1)
+          # Criar chave e assinar com assinatura v1 (obrigatória para Android 4.1.1)
           keytool -genkeypair -v -keystore debug.keystore -storepass android \
             -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=SEME-TI, OU=TI, O=Carapicuiba, L=SP, S=SP, C=BR"
